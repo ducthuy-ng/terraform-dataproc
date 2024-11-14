@@ -11,9 +11,13 @@ provider "google" {
   project = "modified-glyph-438213-k8"
 }
 
+resource "google_storage_bucket" "spark-staging" {
+  location = "asia-southeast1"
+  name     = "spark-staging"
+}
+
 resource "google_compute_network" "a_working_network" {
   name = "a-working-network"
-
 }
 
 resource "google_compute_subnetwork" "a_private_google_access_subnet" {
