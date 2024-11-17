@@ -1,27 +1,8 @@
-#
-# Licensed to the Apache Software Foundation (ASF) under one or more
-# contributor license agreements.  See the NOTICE file distributed with
-# this work for additional information regarding copyright ownership.
-# The ASF licenses this file to You under the Apache License, Version 2.0
-# (the "License"); you may not use this file except in compliance with
-# the License.  You may obtain a copy of the License at
-#
-#    http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-
-
-from pyspark.sql import SparkSession
 from pyspark import SparkConf
+from pyspark.sql import SparkSession
 
 
-def process_customer_data(spark: SparkSession, input_file, output_table):
-    # Define schema for the Customers data as a string array
+def append_customers(spark: SparkSession, input_file, output_table):
     schema = [
         "RESIDENCE_TYPE STRING",
         "RESIDENCE_OWNERSHIP STRING",
@@ -107,9 +88,90 @@ def process_customer_data(spark: SparkSession, input_file, output_table):
         .option("header", True)
         .schema(schema_str)
         .load(input_file)
-        .coalesce(8)
     )
+    df.write.format("bigquery").mode("append").option("table", output_table).save()
 
+
+def append_products(spark: SparkSession, input_file, output_table):
+    schema = [
+        "INVOICE_DATE DATE",
+        "STORE_CODE INTEGER",
+        "TILL_NO INTEGER",
+        "SALE_INVC_TYPE INTEGER",
+        "INVOICE_NO INTEGER",
+        "SALE_LINE_NO INTEGER",
+        "SALE_LINE_TYPE STRING",
+        "PRODUCT_CODE STRING",
+        "SALE_TOT_QTY FLOAT",
+        "SALE_NET_VAL FLOAT",
+        "SALE_TOT_TAX_VAL FLOAT",
+        "ACTUAL_PRODUCT_PRICE FLOAT",
+        "PRODUCT_PRICE FLOAT",
+        "SALE_VAL_AT_COST FLOAT",
+        "SALE_TOT_DISC_VAL FLOAT",
+        "RETURN_REASON_CODE STRING",
+        "PROMOTION_CODE STRING",
+        "PROMO_OFFER_PRICE FLOAT",
+        "DELIVERY_STORE_CODE INTEGER",
+        "SHIPMENT_METHOD_CODE STRING",
+        "SHIPMENT_CHANNEL_CODE STRING",
+        "SESSION_ID INTEGER",
+        "ORDER_DATE DATE",
+        "ORDER_ID INTEGER",
+        "ORDER_LINE_NO INTEGER",
+        "OFFER_CODE STRING",
+        "REEDEMED_COUPON_CODE STRING",
+    ]
+    schema_str = ", ".join(schema)
+
+    df = (
+        spark.read.format("csv")
+        .option("delimiter", "|")
+        .option("encoding", "ISO-8859-1")
+        .option("header", True)
+        .schema(schema_str)
+        .load(input_file)
+    )
+    df.write.format("bigquery").mode("append").option("table", output_table).save()
+
+
+def append_sale_headers(spark: SparkSession, input_file, output_table):
+    # Define schema for the SalesHeader data as a string array
+    schema = [
+        "INVOICE_DATE DATE",
+        "STORE_CODE INTEGER",
+        "TILL_NO INTEGER",
+        "SALE_INVC_TYPE INTEGER",
+        "INVOICE_NO INTEGER",
+        "SALE_INVC_START_TIME TIMESTAMP",
+        "SALE_INVC_END_TIME TIMESTAMP",
+        "CUSTOMER_CODE STRING",
+        "SESSION_ID INTEGER",
+        "ORDER_ID INTEGER",
+        "ORDER_DATE DATE",
+        "SALE_NET_VAL FLOAT",
+        "SALE_TOT_QTY FLOAT",
+        "LOYALTY_CARD_NO STRING",
+        "LOYALTY_POINTS_ISSUED FLOAT",
+        "LOYALTY_POINTS_REDEEMED FLOAT",
+        "CARD_TYPE_CODE STRING",
+        "LOYALTY_SCHEME_ID STRING",
+        "LOYALTY_POOL_ID STRING",
+        "CUSTOMER_IDENTITY_TYPE STRING",
+        "CUSTOMER_IDENTITY_VAL STRING",
+    ]
+
+    # Join the schema array into a single string
+    schema_str = ", ".join(schema)
+
+    df = (
+        spark.read.format("csv")
+        .option("delimiter", "|")
+        .option("encoding", "ISO-8859-1")
+        .option("header", True)
+        .schema(schema_str)
+        .load(input_file)
+    )
     df.write.format("bigquery").mode("append").option("table", output_table).save()
 
 
@@ -120,11 +182,22 @@ if __name__ == "__main__":
         .set("spark.spark.network.timeout", "800s")
         .set("spark.executor.heartbeatInterval", "60s")
     )
-    spark: SparkSession = SparkSession.builder.config(conf=conf).appName(
-        "SalesHeaderProcessor"
-    ).getOrCreate()
+    spark: SparkSession = SparkSession.builder.config(conf=conf).getOrCreate()  # type: ignore
 
-    input_file = "gs://retailer-raw-ingest-data/CustomerDIM_full_20240927.txt"
-    output_table = "modified-glyph-438213-k8.spark_retailer_dataset.customers"
+    append_customers(
+        spark,
+        "gs://retailer-raw-ingest-data/CustomerDIM_full_20240927.txt",
+        "modified-glyph-438213-k8.spark_retailer_dataset.customers",
+    )
 
-    process_customer_data(spark, input_file, output_table)
+    append_sale_headers(
+        spark,
+        "gs://retailer-raw-ingest-data/SalesHeaderFCT_inc_20240920.txt",
+        "modified-glyph-438213-k8.spark_retailer_dataset.sales_headers",
+    )
+
+    append_products(
+        spark,
+        "gs://retailer-raw-ingest-data/SalesLineFCT_inc_20240919.txt",
+        "modified-glyph-438213-k8.spark_retailer_dataset.sales_lines",
+    )
